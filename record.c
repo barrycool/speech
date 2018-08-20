@@ -8,7 +8,7 @@
 #include "ringbuf.h"
 #include <time.h>
 
-#define SHM_BUF_SIZE (48 * 1024)
+#define SHM_BUF_SIZE 48 //(48 * 1024)
 
 int main()
 {
@@ -26,26 +26,16 @@ int main()
 		return 2;
 	}
 
-	printf("%p\n", buf);
-
 	ringbuf_t audio_data = ringbuf_init(buf, SHM_BUF_SIZE);
 
-	printf("%p\n", audio_data);
-	printf("%p\n", audio_data->buf);
-	printf("%p\n", audio_data->head);
-	printf("%ld\n", audio_data->size);
-
-	uint8_t test_buf[1024];
+	char test_buf[1024];
 	size_t test_buf_len;
 
 	while(1)
 	{
-		test_buf_len = sprintf(test_buf, "%08ld\n", time(NULL));
-		fprintf(stderr, test_buf);
+		test_buf_len = sprintf(test_buf, "%ld\n", time(NULL));
+		printf("%s\n", test_buf);
 		ringbuf_memcpy_into(audio_data, test_buf, test_buf_len);
-		printf("%p\n", audio_data->buf);
-		printf("%p\n", audio_data->head);
-		printf("%ld\n", audio_data->size);
 		sleep(1);
 	}
 

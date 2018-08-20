@@ -32,9 +32,9 @@
 
 typedef struct ringbuf_t
 {
-    uint8_t *buf;
-    uint8_t *head, *tail;
+    size_t head, tail;
     size_t size;
+    uint8_t buf[0];
 } *ringbuf_t;
 
 /*
@@ -50,6 +50,9 @@ ringbuf_new(size_t capacity);
 
 ringbuf_t
 ringbuf_init(uint8_t *buf, size_t capacity);
+
+ringbuf_t
+ringbuf_get(uint8_t *buf);
 
 /*
  * The size of the internal buffer, in bytes. One or more bytes may be

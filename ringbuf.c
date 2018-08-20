@@ -15,6 +15,7 @@
 
 #include "ringbuf.h"
 
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +24,213 @@
 #include <sys/param.h>
 #include <assert.h>
 
+ringbuf_t
+ringbuf_init(uint8_t *buf, size_t capacity)
+{
+    assert(buf && capacity);
+
+    ringbuf_t rb = (ringbuf_t)buf;
+    /* One byte is used for detecting the full condition. */
+    rb->size = capacity - sizeof(struct ringbuf_t);
+    ringbuf_reset(rb);
+
+    return rb;
+}
+
+ringbuf_t
+ringbuf_get(uint8_t *buf)
+{
+    assert(buf);
+
+    ringbuf_t rb = (ringbuf_t)buf;
+	ringbuf_reset(rb);
+
+	return rb;
+}
+
+size_t
+ringbuf_buffer_size(const struct ringbuf_t *rb)
+{
+    return rb->size;
+}
+
+void
+ringbuf_reset(ringbuf_t rb)
+{
+    rb->head = rb->tail = 0;
+}
+
+size_t
+ringbuf_capacity(const struct ringbuf_t *rb)
+{
+    return ringbuf_buffer_size(rb) - 1;
+}
+
+size_t
+ringbuf_bytes_free(const struct ringbuf_t *rb)
+{
+    if (rb->head >= rb->tail)
+        return ringbuf_capacity(rb) - (rb->head - rb->tail);
+    else
+        return rb->tail - rb->head - 1;
+}
+
+size_t
+ringbuf_bytes_used(const struct ringbuf_t *rb)
+{
+    return ringbuf_capacity(rb) - ringbuf_bytes_free(rb);
+}
+
+int
+ringbuf_is_full(const struct ringbuf_t *rb)
+{
+    return ringbuf_bytes_free(rb) == 0;
+}
+
+int
+ringbuf_is_empty(const struct ringbuf_t *rb)
+{
+    return ringbuf_bytes_free(rb) == ringbuf_capacity(rb);
+}
+
+const void *
+ringbuf_tail(const struct ringbuf_t *rb)
+{
+    return rb->buf + rb->tail;
+}
+
+const void *
+ringbuf_head(const struct ringbuf_t *rb)
+{
+    return rb->buf + rb->head;
+}
+
+/*
+ * Given a ring buffer rb and a pointer to a location within its
+ * contiguous buffer, return the a pointer to the next logical
+ * location in the ring buffer.
+ */
+static size_t
+ringbuf_nextp(ringbuf_t rb, size_t p)
+{
+    /*
+     * The assert guarantees the expression (++p - rb->buf) is
+     * non-negative; therefore, the modulus operation is safe and
+     * portable.
+     */
+    assert(p < ringbuf_buffer_size(rb));
+    return (++p) % ringbuf_buffer_size(rb);
+}
+
+void *
+ringbuf_memcpy_into(ringbuf_t dst, const void *src, size_t count)
+{
+    const uint8_t *u8src = src;
+    /*const uint8_t *bufend = ringbuf_end(dst);*/
+	const size_t bufend = ringbuf_buffer_size(dst);
+    int overflow = count > ringbuf_bytes_free(dst);
+    size_t nread = 0;
+
+    while (nread != count) {
+        /* don't copy beyond the end of the buffer */
+        assert(bufend > dst->head);
+        size_t n = MIN(bufend - dst->head, count - nread);
+        memcpy(dst->buf + dst->head, u8src + nread, n);
+        dst->head += n;
+        nread += n;
+
+        /* wrap? */
+        if (dst->head == bufend)
+            dst->head = 0;
+    }
+
+    if (overflow) {
+        dst->tail = ringbuf_nextp(dst, dst->head);
+        assert(ringbuf_is_full(dst));
+    }
+
+    return dst->buf + dst->head;
+}
+
+void *
+ringbuf_drug_hole(ringbuf_t dst, size_t count)
+{
+	const size_t head = dst->head;
+	const size_t bufend = ringbuf_buffer_size(dst);
+    int overflow = count > ringbuf_bytes_free(dst);
+    size_t nread = 0;
+
+    while (nread != count) {
+        /* don't copy beyond the end of the buffer */
+        assert(bufend > dst->head);
+        size_t n = MIN(bufend - dst->head, count - nread);
+        dst->head += n;
+        nread += n;
+
+        /* wrap? */
+        if (dst->head == bufend)
+            dst->head = 0;
+    }
+
+    if (overflow) {
+        dst->tail = ringbuf_nextp(dst, dst->head);
+        assert(ringbuf_is_full(dst));
+    }
+
+    return dst->buf + head;
+}
+
+void *
+ringbuf_memcpy_from(void *dst, ringbuf_t src, size_t count)
+{
+    size_t bytes_used = ringbuf_bytes_used(src);
+    if (count > bytes_used)
+        return 0;
+
+    uint8_t *u8dst = dst;
+    const size_t bufend = ringbuf_buffer_size(src);
+    size_t nwritten = 0;
+    while (nwritten != count) {
+        assert(bufend > src->tail);
+        size_t n = MIN(bufend - src->tail, count - nwritten);
+        memcpy(u8dst + nwritten, src->buf + src->tail, n);
+        src->tail += n;
+        nwritten += n;
+
+        /* wrap ? */
+        if (src->tail == bufend)
+            src->tail = 0;
+    }
+
+    assert(count + ringbuf_bytes_used(src) == bytes_used);
+    return src->buf + src->tail;
+}
+
+void *
+ringbuf_skip_buf(ringbuf_t src, size_t count)
+{
+    size_t bytes_used = ringbuf_bytes_used(src);
+    if (count > bytes_used)
+        return 0;
+
+    const size_t bufend = ringbuf_buffer_size(src);
+    size_t nwritten = 0;
+    while (nwritten != count) {
+        assert(bufend > src->tail);
+        size_t n = MIN(bufend - src->tail, count - nwritten);
+        src->tail += n;
+        nwritten += n;
+
+        /* wrap ? */
+        if (src->tail == bufend)
+            src->tail = 0;
+    }
+
+    assert(count + ringbuf_bytes_used(src) == bytes_used);
+    return src->buf + src->tail;
+}
+
+#if 0
 /*
  * The code is written for clarity, not cleverness or performance, and
  * contains many assert()s to enforce invariant assumptions and catch
@@ -57,9 +265,29 @@ ringbuf_init(uint8_t *buf, size_t capacity)
 
     ringbuf_t rb = (ringbuf_t)buf;
     /* One byte is used for detecting the full condition. */
-    rb->size = capacity - sizeof(ringbuf_t);
-    rb->buf = buf + sizeof(ringbuf_t);
+    rb->size = capacity - sizeof(struct ringbuf_t);
+    rb->buf = buf + sizeof(struct ringbuf_t);
     ringbuf_reset(rb);
+
+    return rb;
+}
+
+ringbuf_t
+ringbuf_get(uint8_t *buf)
+{
+    assert(buf);
+
+    ringbuf_t rb = (ringbuf_t)buf;
+
+	printf("%p\n", rb);
+	printf("%p\n", rb->buf);
+	printf("%p\n", rb->head);
+	printf("%p\n", rb->tail);
+	printf("%lX\n", rb->size);
+
+	rb->head = buf + (rb->head - rb->buf) + sizeof(struct ringbuf_t);
+	rb->tail = buf +(rb->tail - rb->buf) + sizeof(struct ringbuf_t);
+    rb->buf = buf + sizeof(struct ringbuf_t);
 
     return rb;
 }
@@ -220,9 +448,7 @@ ringbuf_memcpy_into(ringbuf_t dst, const void *src, size_t count)
         assert(bufend > dst->head);
         size_t n = MIN(bufend - dst->head, count - nread);
         memcpy(dst->head, u8src + nread, n);
-        printf("%p\n", dst->head);
         dst->head += n;
-        printf("%p\n", dst->head);
         nread += n;
 
         /* wrap? */
@@ -354,3 +580,6 @@ ringbuf_copy(ringbuf_t dst, ringbuf_t src, size_t count)
 
     return dst->head;
 }
+
+#endif
+

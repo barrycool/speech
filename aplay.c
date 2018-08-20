@@ -48,11 +48,14 @@
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <endian.h>
 #include "aconfig.h"
 #include "gettext.h"
 #include "formats.h"
 #include "version.h"
+#include "ringbuf.h"
 
 #ifdef SND_CHMAP_API_VERSION
 #define CONFIG_SUPPORT_CHMAP	1
@@ -70,14 +73,16 @@
 #define be32toh(x) __be32_to_cpu(x)
 #endif
 
-#define DEFAULT_FORMAT		SND_PCM_FORMAT_U8
-#define DEFAULT_SPEED 		8000
+#define DEFAULT_FORMAT		SND_PCM_FORMAT_S16_LE
+#define DEFAULT_SPEED 		16000
 
 #define FORMAT_DEFAULT		-1
 #define FORMAT_RAW		0
 #define FORMAT_VOC		1
 #define FORMAT_WAVE		2
 #define FORMAT_AU		3
+
+#define SHM_BUF_SIZE (48 * 1024)
 
 /* global data */
 
@@ -150,6 +155,8 @@ static snd_pcm_chmap_t *channel_map = NULL; /* chmap to override */
 static unsigned int *hw_map = NULL; /* chmap to follow */
 #endif
 
+static int shm = 0;
+
 /* needed prototypes */
 
 static void done_stdin(void);
@@ -203,6 +210,7 @@ _("Usage: %s [OPTION]... [FILE]...\n"
 "\n"
 "-h, --help              help\n"
 "    --version           print current version\n"
+"-s  --shm               save data to shared mem\n"
 "-l, --list-devices      list all soundcards and digital audio devices\n"
 "-L, --list-pcms         list device names\n"
 "-D, --device=NAME       select PCM by name\n"
@@ -413,6 +421,7 @@ static void signal_handler_recycle (int sig)
 
 enum {
 	OPT_VERSION = 1,
+	OPT_SHM,
 	OPT_PERIOD_SIZE,
 	OPT_BUFFER_SIZE,
 	OPT_DISABLE_RESAMPLE,
@@ -448,7 +457,7 @@ static long parse_long(const char *str, int *err)
 int main(int argc, char *argv[])
 {
 	int option_index;
-	static const char short_options[] = "hnlLD:qt:c:f:r:d:MNF:A:R:T:B:vV:IPCi"
+	static const char short_options[] = "hnlLD:qt:c:f:r:d:MNF:A:R:T:B:vV:IPCis"
 #ifdef CONFIG_SUPPORT_CHMAP
 		"m:"
 #endif
@@ -456,6 +465,7 @@ int main(int argc, char *argv[])
 	static const struct option long_options[] = {
 		{"help", 0, 0, 'h'},
 		{"version", 0, 0, OPT_VERSION},
+		{"shm", 0, 0, OPT_SHM},
 		{"list-devnames", 0, 0, 'n'},
 		{"list-devices", 0, 0, 'l'},
 		{"list-pcms", 0, 0, 'L'},
@@ -551,6 +561,12 @@ int main(int argc, char *argv[])
 			return 0;
 		case 'l':
 			do_device_list = 1;
+			break;
+		case 's':
+			shm = 1;
+			break;
+		case OPT_SHM:
+			shm = 1;
 			break;
 		case 'L':
 			do_pcm_list = 1;
@@ -3036,7 +3052,24 @@ static void capture(char *orig_name)
 
 	do {
 		/* open a file to write */
-		if(!tostdout) {
+		if (shm) {
+			int shmid = shmget(ftok("/record2recognize", 0), SHM_BUF_SIZE, IPC_CREAT | 0664);
+			if (shmid == -1)
+			{
+				printf("%s\n", strerror(errno));
+				prg_exit(EXIT_FAILURE);
+			}
+
+			uint8_t *buf = shmat(shmid, NULL, 0);
+			if (buf == NULL)
+			{
+				printf("%s\n", strerror(errno));
+				prg_exit(EXIT_FAILURE);
+			}
+
+			ringbuf_t audio_data = ringbuf_init(buf, SHM_BUF_SIZE);
+		}
+		else if(!tostdout) {
 			/* upon the second file we start the numbering scheme */
 			if (filecount || use_strftime) {
 				filecount = new_capture_file(orig_name, namebuf,
@@ -3071,9 +3104,9 @@ static void capture(char *orig_name)
 		/* capture */
 		fdcount = 0;
 		while (rest > 0 && recycle_capture_file == 0 && !in_aborting) {
-			size_t c = (rest <= (off64_t)chunk_bytes) ?
-				(size_t)rest : chunk_bytes;
-			size_t f = c * 8 / bits_per_frame;
+			ssize_t c = (rest <= (off64_t)chunk_bytes) ?
+				(ssize_t)rest : chunk_bytes;
+			ssize_t f = c * 8 / bits_per_frame;
 			if (pcm_read(audiobuf, f) != f) {
 				in_aborting = 1;
 				break;
