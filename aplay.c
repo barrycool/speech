@@ -3050,6 +3050,8 @@ static void capture(char *orig_name)
 	}
 	init_stdin();
 
+	ringbuf_t audio_data;
+
 	do {
 		/* open a file to write */
 		if (shm) {
@@ -3067,7 +3069,7 @@ static void capture(char *orig_name)
 				prg_exit(EXIT_FAILURE);
 			}
 
-			ringbuf_t audio_data = ringbuf_init(buf, SHM_BUF_SIZE);
+			audio_data = ringbuf_init(buf, SHM_BUF_SIZE);
 		}
 		else if(!tostdout) {
 			/* upon the second file we start the numbering scheme */
@@ -3111,10 +3113,17 @@ static void capture(char *orig_name)
 				in_aborting = 1;
 				break;
 			}
-			if (write(fd, audiobuf, c) != c) {
-				perror(name);
-				in_aborting = 1;
-				break;
+			if (shm)
+			{
+				ringbuf_memcpy_into(audio_data, audiobuf, f);
+			}
+			else
+			{
+				if (write(fd, audiobuf, c) != c) {
+					perror(name);
+					in_aborting = 1;
+					break;
+				}
 			}
 			count -= c;
 			rest -= c;
