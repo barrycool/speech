@@ -147,13 +147,14 @@ ringbuf_memcpy_into(ringbuf_t dst, const void *src, size_t count)
     if (overflow) {
         dst->tail = ringbuf_nextp(dst, dst->head);
         assert(ringbuf_is_full(dst));
+		ringbuf_reset(dst);
     }
 
     return dst->buf + dst->head;
 }
 
 void *
-ringbuf_drug_hole(ringbuf_t dst, size_t count)
+ringbuf_fill_buf(ringbuf_t dst, size_t count)
 {
 	const size_t head = dst->head;
 	const size_t bufend = ringbuf_buffer_size(dst);
@@ -175,6 +176,7 @@ ringbuf_drug_hole(ringbuf_t dst, size_t count)
     if (overflow) {
         dst->tail = ringbuf_nextp(dst, dst->head);
         assert(ringbuf_is_full(dst));
+		ringbuf_reset(dst);
     }
 
     return dst->buf + head;

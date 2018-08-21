@@ -4,14 +4,15 @@
 #include <string.h>
 #include <errno.h>
 #include <stdint.h>
-#include <unistd.h>
 #include "ringbuf.h"
+#include <fcntl.h>
+#include <unistd.h>
 
-#define SHM_BUF_SIZE 48//(48 * 1024)
+#define SHM_BUF_SIZE (48 * 1024)
 
 int main()
 {
-	int shmid = shmget(ftok("/record2recognize", 0), SHM_BUF_SIZE, IPC_CREAT | 0644);
+	int shmid = shmget(ftok("/bin/bash", 0), SHM_BUF_SIZE, IPC_CREAT | 0644);
 
 	if (shmid == -1)
 	{
@@ -30,6 +31,7 @@ int main()
 
 	uint8_t test_buf[1024];
 	size_t test_buf_len;
+	int fd = open("test.wav", O_CREAT | O_WRONLY, 0644);
 
 	printf("%p\n", audio_data);
 	printf("%p\n", audio_data->buf);
@@ -37,22 +39,21 @@ int main()
 	printf("%lu\n", audio_data->tail);
 	printf("%lX\n", audio_data->size);
 
-	while(1)
+	for (int i = 0; i < 1024; i++)
 	{
-		if (ringbuf_bytes_used(audio_data) >= 11)
+		if (ringbuf_bytes_used(audio_data) >= 1024)
 		{
-			ringbuf_memcpy_from(test_buf, audio_data, 11);
-			test_buf[11] = 0;
-
-			printf("%s\n", test_buf);
+			ringbuf_memcpy_from(test_buf, audio_data, 1024);
+			write(fd, test_buf, 1024);
 		}
 		else
 		{
 			printf("no data\n");
+			usleep(100000);
 		}
-		
-		sleep(1);
 	}
+
+	close(fd);
 
 	if (shmdt(buf) == -1)
     {

@@ -31,6 +31,11 @@ limitations under the License.
 #include <sys/types.h>  // NOLINT(build/include_order)
 #include <sys/uio.h>    // NOLINT(build/include_order)
 #include <unistd.h>     // NOLINT(build/include_order)
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
+#include "ringbuf.h"
+#include <fcntl.h>
 
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
@@ -39,6 +44,8 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/examples/label_wav/wav_helpers.h"
 #include "tensorflow/contrib/lite/examples/label_wav/get_top_n.h"
+
+#define SHM_BUF_SIZE (48 * 1024)
 
 #define LOG(x) std::cerr
 
@@ -193,10 +200,33 @@ void RunInference(Settings* s) {
   int last_index = -1;
   uint32_t current_window_duration_sample;
 
+  int shmid = shmget(ftok("/bin/bash", 0), SHM_BUF_SIZE, IPC_CREAT | 0644);
+  if (shmid == -1)
+  {
+	  printf("%s\n", strerror(errno));
+	  return 1;
+  }
+
+  uint8_t *buf = shmat(shmid, NULL, 0);
+  if (buf == NULL)
+  {
+	  printf("%s\n", strerror(errno));
+	  return 2;
+  }
+
+  ringbuf_t audio_data =  ringbuf_get(buf);
+
   /*for (int i = 0; i < 4; i++)*/
   while (start <= end - 16000)
   {
-	  memcpy(input_buf, start, 16000 * sizeof(float));
+	  if (ringbuf_bytes_used(audio_data) < clip_stride_samples)
+	  {
+		  continue;
+		  usleep(50000);
+	  }
+
+	  /*memcpy(input_buf, start, 16000 * sizeof(float));*/
+	  ringbuf_memcpy_from(input_buf, audio_data, clip_stride_samples);
 
 	  interpreter->Invoke();
 

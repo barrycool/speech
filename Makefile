@@ -1,5 +1,7 @@
 
-all : record recognize arecord
+all : arecord
+
+test : record recognize arecord
 
 record: record.c ringbuf.c
 	gcc -g -o $@ $^
@@ -7,6 +9,6 @@ record: record.c ringbuf.c
 recognize: recognize.c ringbuf.c
 	gcc -g -o $@ $^
 
-arecord: aplay.c
+arecord: aplay.c ringbuf.c
 	gcc -g -o $@ $^ -l asound
 

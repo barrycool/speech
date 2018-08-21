@@ -163,6 +163,7 @@ static void done_stdin(void);
 
 static void playback(char *filename);
 static void capture(char *filename);
+static void capture_shm(char *filename);
 static void playbackv(char **filenames, unsigned int count);
 static void capturev(char **filenames, unsigned int count);
 
@@ -861,12 +862,16 @@ int main(int argc, char *argv[])
 		if (optind > argc - 1) {
 			if (stream == SND_PCM_STREAM_PLAYBACK)
 				playback(NULL);
+			else if (shm)
+				capture_shm(NULL);
 			else
 				capture(NULL);
 		} else {
 			while (optind <= argc - 1) {
 				if (stream == SND_PCM_STREAM_PLAYBACK)
 					playback(argv[optind++]);
+				else if (shm)
+					capture_shm(argv[optind++]);
 				else
 					capture(argv[optind++]);
 			}
@@ -1343,6 +1348,7 @@ static void set_params(void)
 				plugex);
 		}
 	}
+	printf("%d, %lu, %d, %lu\n", buffer_time, buffer_frames, period_time, period_frames);
 	rate = hwparams.rate;
 	if (buffer_time == 0 && buffer_frames == 0) {
 		err = snd_pcm_hw_params_get_buffer_time_max(params,
@@ -1351,18 +1357,21 @@ static void set_params(void)
 		if (buffer_time > 500000)
 			buffer_time = 500000;
 	}
+	printf("%d, %lu, %d, %lu\n", buffer_time, buffer_frames, period_time, period_frames);
 	if (period_time == 0 && period_frames == 0) {
 		if (buffer_time > 0)
 			period_time = buffer_time / 4;
 		else
 			period_frames = buffer_frames / 4;
 	}
+	printf("%d, %lu, %d, %lu\n", buffer_time, buffer_frames, period_time, period_frames);
 	if (period_time > 0)
 		err = snd_pcm_hw_params_set_period_time_near(handle, params,
 							     &period_time, 0);
 	else
 		err = snd_pcm_hw_params_set_period_size_near(handle, params,
 							     &period_frames, 0);
+	printf("%d, %lu, %d, %lu\n", buffer_time, buffer_frames, period_time, period_frames);
 	assert(err >= 0);
 	if (buffer_time > 0) {
 		err = snd_pcm_hw_params_set_buffer_time_near(handle, params,
@@ -1371,6 +1380,7 @@ static void set_params(void)
 		err = snd_pcm_hw_params_set_buffer_size_near(handle, params,
 							     &buffer_frames);
 	}
+	printf("%d, %lu, %d, %lu\n", buffer_time, buffer_frames, period_time, period_frames);
 	assert(err >= 0);
 	monotonic = snd_pcm_hw_params_is_monotonic(params);
 	can_pause = snd_pcm_hw_params_can_pause(params);
@@ -3010,6 +3020,52 @@ static int safe_open(const char *name)
 	return fd;
 }
 
+static void capture_shm(char *orig_name)
+{
+	/* display verbose output to console */
+	header(file_type, orig_name);
+
+	/* setup sound hardware */
+	set_params();
+
+	int shmid;
+	ringbuf_t audio_data;
+
+	/* open a file to write */
+	shmid = shmget(ftok("/bin/bash", 0), SHM_BUF_SIZE, IPC_CREAT | 0644);
+	if (shmid == -1)
+	{
+		printf("shmget %s\n", strerror(errno));
+		prg_exit(EXIT_FAILURE);
+	}
+
+	uint8_t *buf = shmat(shmid, NULL, 0);
+	if (buf == NULL)
+	{
+		printf("shmat %s\n", strerror(errno));
+		prg_exit(EXIT_FAILURE);
+	}
+
+	audio_data = ringbuf_init(buf, SHM_BUF_SIZE);
+
+	printf ("%ld\n", chunk_size);
+	/* capture */
+	while (1) {
+		ssize_t c = chunk_bytes;
+		ssize_t f = c * 8 / bits_per_frame;
+		if (pcm_read(audiobuf, f) != f) {
+			in_aborting = 1;
+			break;
+		}
+
+		if (in_aborting)
+			prg_exit(EXIT_FAILURE);
+
+		ringbuf_memcpy_into(audio_data, audiobuf, c);
+	}
+}
+
+
 static void capture(char *orig_name)
 {
 	int tostdout=0;		/* boolean which describes output stream */
@@ -3050,28 +3106,9 @@ static void capture(char *orig_name)
 	}
 	init_stdin();
 
-	ringbuf_t audio_data;
-
 	do {
 		/* open a file to write */
-		if (shm) {
-			int shmid = shmget(ftok("/record2recognize", 0), SHM_BUF_SIZE, IPC_CREAT | 0664);
-			if (shmid == -1)
-			{
-				printf("%s\n", strerror(errno));
-				prg_exit(EXIT_FAILURE);
-			}
-
-			uint8_t *buf = shmat(shmid, NULL, 0);
-			if (buf == NULL)
-			{
-				printf("%s\n", strerror(errno));
-				prg_exit(EXIT_FAILURE);
-			}
-
-			audio_data = ringbuf_init(buf, SHM_BUF_SIZE);
-		}
-		else if(!tostdout) {
+		if (!tostdout) {
 			/* upon the second file we start the numbering scheme */
 			if (filecount || use_strftime) {
 				filecount = new_capture_file(orig_name, namebuf,
@@ -3113,17 +3150,10 @@ static void capture(char *orig_name)
 				in_aborting = 1;
 				break;
 			}
-			if (shm)
-			{
-				ringbuf_memcpy_into(audio_data, audiobuf, f);
-			}
-			else
-			{
-				if (write(fd, audiobuf, c) != c) {
-					perror(name);
-					in_aborting = 1;
-					break;
-				}
+			if (write(fd, audiobuf, c) != c) {
+				perror(name);
+				in_aborting = 1;
+				break;
 			}
 			count -= c;
 			rest -= c;

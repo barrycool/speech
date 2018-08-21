@@ -54,6 +54,12 @@ ringbuf_init(uint8_t *buf, size_t capacity);
 ringbuf_t
 ringbuf_get(uint8_t *buf);
 
+void *
+ringbuf_fill_buf(ringbuf_t dst, size_t count);
+
+void *
+ringbuf_skip_buf(ringbuf_t src, size_t count);
+
 /*
  * The size of the internal buffer, in bytes. One or more bytes may be
  * unusable in order to distinguish the "buffer full" state from the
