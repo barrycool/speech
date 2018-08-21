@@ -182,10 +182,10 @@ void RunInference(Settings* s) {
 		  &channel_count, &sample_rate, s);
   
   read_wav(s->input_wav_name_off, raw_data + 16000 * 3, &sample_count,
-		  &channel_count, &sample_rate, s);*/
+		  &channel_count, &sample_rate, s);
 
   read_wav(s->input_wav_name_test, raw_data, &sample_count,
-		  &channel_count, &sample_rate, s);
+		  &channel_count, &sample_rate, s);*/
 
   uint32_t clip_duration_ms = 1000;
   const uint32_t clip_duration_samples = (clip_duration_ms * sample_rate) / 1000;
@@ -216,8 +216,7 @@ void RunInference(Settings* s) {
 
   ringbuf_t audio_data =  ringbuf_get(buf);
 
-  /*for (int i = 0; i < 4; i++)*/
-  while (start <= end - 16000)
+  while (1)
   {
 	  if (ringbuf_bytes_used(audio_data) < clip_stride_samples)
 	  {
@@ -273,8 +272,6 @@ void RunInference(Settings* s) {
 			  }
 		  }
 	  }
-
-	  start += clip_stride_samples;
   }
 }
 
