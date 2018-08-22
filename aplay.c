@@ -82,7 +82,7 @@
 #define FORMAT_WAVE		2
 #define FORMAT_AU		3
 
-#define SHM_BUF_SIZE (48 * 1024)
+#define SHM_BUF_SIZE (96 * 1024)
 
 /* global data */
 
@@ -117,7 +117,7 @@ static u_char *audiobuf = NULL;
 static snd_pcm_uframes_t chunk_size = 0;
 static unsigned period_time = 0;
 static unsigned buffer_time = 0;
-static snd_pcm_uframes_t period_frames = 0;
+static snd_pcm_uframes_t period_frames = 512;
 static snd_pcm_uframes_t buffer_frames = 0;
 static int avail_min = -1;
 static int start_delay = 0;
@@ -1348,7 +1348,7 @@ static void set_params(void)
 				plugex);
 		}
 	}
-	printf("%d, %lu, %d, %lu\n", buffer_time, buffer_frames, period_time, period_frames);
+
 	rate = hwparams.rate;
 	if (buffer_time == 0 && buffer_frames == 0) {
 		err = snd_pcm_hw_params_get_buffer_time_max(params,
@@ -1357,21 +1357,21 @@ static void set_params(void)
 		if (buffer_time > 500000)
 			buffer_time = 500000;
 	}
-	printf("%d, %lu, %d, %lu\n", buffer_time, buffer_frames, period_time, period_frames);
+
 	if (period_time == 0 && period_frames == 0) {
 		if (buffer_time > 0)
 			period_time = buffer_time / 4;
 		else
 			period_frames = buffer_frames / 4;
 	}
-	printf("%d, %lu, %d, %lu\n", buffer_time, buffer_frames, period_time, period_frames);
+
 	if (period_time > 0)
 		err = snd_pcm_hw_params_set_period_time_near(handle, params,
 							     &period_time, 0);
 	else
 		err = snd_pcm_hw_params_set_period_size_near(handle, params,
 							     &period_frames, 0);
-	printf("%d, %lu, %d, %lu\n", buffer_time, buffer_frames, period_time, period_frames);
+
 	assert(err >= 0);
 	if (buffer_time > 0) {
 		err = snd_pcm_hw_params_set_buffer_time_near(handle, params,
@@ -1380,7 +1380,7 @@ static void set_params(void)
 		err = snd_pcm_hw_params_set_buffer_size_near(handle, params,
 							     &buffer_frames);
 	}
-	printf("%d, %lu, %d, %lu\n", buffer_time, buffer_frames, period_time, period_frames);
+
 	assert(err >= 0);
 	monotonic = snd_pcm_hw_params_is_monotonic(params);
 	can_pause = snd_pcm_hw_params_can_pause(params);
@@ -3048,7 +3048,6 @@ static void capture_shm(char *orig_name)
 
 	audio_data = ringbuf_init(buf, SHM_BUF_SIZE);
 
-	printf ("%ld\n", chunk_size);
 	/* capture */
 	while (1) {
 		ssize_t c = chunk_bytes;

@@ -209,6 +209,36 @@ ringbuf_memcpy_from(void *dst, ringbuf_t src, size_t count)
 }
 
 void *
+ringbuf_copy_data(void *dst, ringbuf_t src, size_t count)
+{
+	size_t tail = src->tail;
+
+    size_t bytes_used = ringbuf_bytes_used(src);
+    if (count > bytes_used)
+        return 0;
+
+    uint8_t *u8dst = dst;
+    const size_t bufend = ringbuf_buffer_size(src);
+    size_t nwritten = 0;
+    while (nwritten != count) {
+        assert(bufend > src->tail);
+        size_t n = MIN(bufend - src->tail, count - nwritten);
+        memcpy(u8dst + nwritten, src->buf + src->tail, n);
+        src->tail += n;
+        nwritten += n;
+
+        /* wrap ? */
+        if (src->tail == bufend)
+            src->tail = 0;
+    }
+
+    assert(count + ringbuf_bytes_used(src) == bytes_used);
+
+	src->tail = tail;
+    return src->buf + src->tail;
+}
+
+void *
 ringbuf_skip_buf(ringbuf_t src, size_t count)
 {
     size_t bytes_used = ringbuf_bytes_used(src);

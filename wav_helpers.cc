@@ -34,6 +34,13 @@ inline float Int16SampleToFloat(int16_t data) {
   return data * kMultiplier;
 }
 
+void decode_audio_data(int16_t *data, uint32_t data_len, float *out)
+{
+	for(uint32_t i = 0; i < data_len; i++) {
+		out[i] = Int16SampleToFloat(single_channel_value[i]);
+	}
+}
+
 void read_wav(const std::string& input_bmp_name, float *out, uint32_t* sample_count,
                               uint16_t* channel_count, uint32_t* sample_rate, Settings* s) {
   int begin, end;

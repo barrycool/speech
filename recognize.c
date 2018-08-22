@@ -8,7 +8,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#define SHM_BUF_SIZE (48 * 1024)
+#define SHM_BUF_SIZE (96 * 1024)
 
 int main()
 {
@@ -39,7 +39,7 @@ int main()
 	printf("%lu\n", audio_data->tail);
 	printf("%lX\n", audio_data->size);
 
-	for (int i = 0; i < 1024; i++)
+	for (int i = 0; i < 512; i++)
 	{
 		if (ringbuf_bytes_used(audio_data) >= 1024)
 		{

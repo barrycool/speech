@@ -21,6 +21,8 @@ limitations under the License.
 namespace tflite {
 namespace label_wav {
 
+void decode_audio_data(int16_t *data, uint32_t data_len, float *out);
+
 void read_wav(const std::string& input_bmp_name, float *out, uint32_t* sample_count,
                               uint16_t* channel_count, uint32_t* sample_rate, Settings* s);
 

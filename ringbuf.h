@@ -58,6 +58,9 @@ void *
 ringbuf_fill_buf(ringbuf_t dst, size_t count);
 
 void *
+ringbuf_copy_data(void *dst, ringbuf_t src, size_t count);
+
+void *
 ringbuf_skip_buf(ringbuf_t src, size_t count);
 
 /*

@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/examples/label_wav/wav_helpers.h"
 #include "tensorflow/contrib/lite/examples/label_wav/get_top_n.h"
 
-#define SHM_BUF_SIZE (48 * 1024)
+#define SHM_BUF_SIZE (96 * 1024)
 
 #define LOG(x) std::cerr
 
@@ -169,7 +169,7 @@ void RunInference(Settings* s) {
   if (ReadLabelsFile(s->labels_file_name, &labels, &label_count) != kTfLiteOk)
 	  exit(-1);
 
-  float *raw_data = new float[16000 * 8];
+  /*float *raw_data = new float[16000 * 8];*/
   float *input_buf = interpreter->typed_tensor<float>(input);
 
   /*read_wav(s->input_wav_name, raw_data, &sample_count,
@@ -216,16 +216,20 @@ void RunInference(Settings* s) {
 
   ringbuf_t audio_data =  ringbuf_get(buf);
 
+  int16_t *raw_data = new int16_t[16000];
+
   while (1)
   {
-	  if (ringbuf_bytes_used(audio_data) < clip_stride_samples)
+	  if (ringbuf_bytes_used(audio_data) < clip_duration_samples * 2)
 	  {
-		  continue;
 		  usleep(50000);
+		  continue;
 	  }
 
-	  /*memcpy(input_buf, start, 16000 * sizeof(float));*/
-	  ringbuf_memcpy_from(input_buf, audio_data, clip_stride_samples);
+	  ringbuf_copy_data(raw_data, audio_data, clip_duration_samples * 2);
+	  ringbuf_skip_buf(raw_data, clip_stride_samples * 2);
+
+	  decode_audio_data(raw_data, clip_duration_samples, input_buf);		
 
 	  interpreter->Invoke();
 
@@ -256,14 +260,15 @@ void RunInference(Settings* s) {
 	  current_window_duration_sample = start - last_start;
 
 	  if (top_results[0].first > detection_threshold) {
-		  if (last_index != top_results[0].second || 
-				  (current_window_duration_sample >= average_window_duration_sample ||
-				  current_window_duration_sample == 0)) {
+		  /*if (last_index != top_results[0].second || 
+			(current_window_duration_sample >= average_window_duration_sample ||
+			current_window_duration_sample == 0)) */
+		  {
 
-			  LOG(INFO) << current_window_duration_sample << "\n";
-			  start += average_window_duration_sample - clip_stride_samples;
-			  last_start = start;
-			  last_index = top_results[0].second;
+			  /*LOG(INFO) << current_window_duration_sample << "\n";
+				start += average_window_duration_sample - clip_stride_samples;
+				last_start = start;
+				last_index = top_results[0].second;*/
 
 			  for (const auto& result : top_results) {
 				  const float confidence = result.first;
