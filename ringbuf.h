@@ -30,26 +30,16 @@
 #include <sys/types.h>
 #include <stdint.h>
 
-typedef struct ringbuf_t
+typedef struct ringbuf
 {
     size_t head, tail;
     size_t size;
     uint8_t buf[0];
 } *ringbuf_t;
 
-/*
- * Create a new ring buffer with the given capacity (usable
- * bytes). Note that the actual internal buffer size may be one or
- * more bytes larger than the usable capacity, for bookkeeping.
- *
- * Returns the new ring buffer object, or 0 if there's not enough
- * memory to fulfill the request for the given capacity.
- */
-ringbuf_t
-ringbuf_new(size_t capacity);
 
 ringbuf_t
-ringbuf_init(uint8_t *buf, size_t capacity);
+ringbuf_init(uint8_t *buf, size_t buf_len, size_t align_size);
 
 ringbuf_t
 ringbuf_get(uint8_t *buf);
@@ -62,6 +52,71 @@ ringbuf_copy_data(void *dst, ringbuf_t src, size_t count);
 
 void *
 ringbuf_skip_buf(ringbuf_t src, size_t count);
+
+/*
+ * The number of bytes currently being used in the ring buffer. This
+ * value is never larger than the ring buffer's usable capacity.
+ */
+size_t
+ringbuf_bytes_used(ringbuf_t rb);
+
+/*
+ * Reset a ring buffer to its initial state (empty).
+ */
+void
+ringbuf_reset(ringbuf_t rb);
+
+void *
+ringbuf_tail(ringbuf_t rb);
+
+void *
+ringbuf_head(ringbuf_t rb);
+
+/*
+ * Copy n bytes from a contiguous memory area src into the ring buffer
+ * dst. Returns the ring buffer's new head pointer.
+ *
+ * It is possible to copy more data from src than is available in the
+ * buffer; i.e., it's possible to overflow the ring buffer using this
+ * function. When an overflow occurs, the state of the ring buffer is
+ * guaranteed to be consistent, including the head and tail pointers;
+ * old data will simply be overwritten in FIFO fashion, as
+ * needed. However, note that, if calling the function results in an
+ * overflow, the value of the ring buffer's tail pointer may be
+ * different than it was before the function was called.
+ */
+void *
+ringbuf_memcpy_into(ringbuf_t dst, const void *src, size_t count);
+
+/*
+ * Copy n bytes from the ring buffer src, starting from its tail
+ * pointer, into a contiguous memory area dst. Returns the value of
+ * src's tail pointer after the copy is finished.
+ *
+ * Note that this copy is destructive with respect to the ring buffer:
+ * the n bytes copied from the ring buffer are no longer available in
+ * the ring buffer after the copy is complete, and the ring buffer
+ * will have n more free bytes than it did before the function was
+ * called.
+ *
+ * This function will *not* allow the ring buffer to underflow. If
+ * count is greater than the number of bytes used in the ring buffer,
+ * no bytes are copied, and the function will return 0.
+ */
+void *
+ringbuf_memcpy_from(void *dst, ringbuf_t src, size_t count);
+
+#if 0
+/*
+ * Create a new ring buffer with the given capacity (usable
+ * bytes). Note that the actual internal buffer size may be one or
+ * more bytes larger than the usable capacity, for bookkeeping.
+ *
+ * Returns the new ring buffer object, or 0 if there's not enough
+ * memory to fulfill the request for the given capacity.
+ */
+ringbuf_t
+ringbuf_new(size_t capacity);
 
 /*
  * The size of the internal buffer, in bytes. One or more bytes may be
@@ -161,22 +216,6 @@ size_t
 ringbuf_memset(ringbuf_t dst, int c, size_t len);
 
 /*
- * Copy n bytes from a contiguous memory area src into the ring buffer
- * dst. Returns the ring buffer's new head pointer.
- *
- * It is possible to copy more data from src than is available in the
- * buffer; i.e., it's possible to overflow the ring buffer using this
- * function. When an overflow occurs, the state of the ring buffer is
- * guaranteed to be consistent, including the head and tail pointers;
- * old data will simply be overwritten in FIFO fashion, as
- * needed. However, note that, if calling the function results in an
- * overflow, the value of the ring buffer's tail pointer may be
- * different than it was before the function was called.
- */
-void *
-ringbuf_memcpy_into(ringbuf_t dst, const void *src, size_t count);
-
-/*
  * This convenience function calls read(2) on the file descriptor fd,
  * using the ring buffer rb as the destination buffer for the read,
  * and returns the value returned by read(2). It will only call
@@ -193,24 +232,6 @@ ringbuf_memcpy_into(ringbuf_t dst, const void *src, size_t count);
  */
 ssize_t
 ringbuf_read(int fd, ringbuf_t rb, size_t count);
-
-/*
- * Copy n bytes from the ring buffer src, starting from its tail
- * pointer, into a contiguous memory area dst. Returns the value of
- * src's tail pointer after the copy is finished.
- *
- * Note that this copy is destructive with respect to the ring buffer:
- * the n bytes copied from the ring buffer are no longer available in
- * the ring buffer after the copy is complete, and the ring buffer
- * will have n more free bytes than it did before the function was
- * called.
- *
- * This function will *not* allow the ring buffer to underflow. If
- * count is greater than the number of bytes used in the ring buffer,
- * no bytes are copied, and the function will return 0.
- */
-void *
-ringbuf_memcpy_from(void *dst, ringbuf_t src, size_t count);
 
 /*
  * This convenience function calls write(2) on the file descriptor fd,
@@ -260,5 +281,6 @@ ringbuf_write(int fd, ringbuf_t rb, size_t count);
  */
 void *
 ringbuf_copy(ringbuf_t dst, ringbuf_t src, size_t count);
+#endif
 
 #endif /* INCLUDED_RINGBUF_H */

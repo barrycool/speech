@@ -117,7 +117,7 @@ static u_char *audiobuf = NULL;
 static snd_pcm_uframes_t chunk_size = 0;
 static unsigned period_time = 0;
 static unsigned buffer_time = 0;
-static snd_pcm_uframes_t period_frames = 512;
+static snd_pcm_uframes_t period_frames = 0;
 static snd_pcm_uframes_t buffer_frames = 0;
 static int avail_min = -1;
 static int start_delay = 0;
@@ -3046,13 +3046,14 @@ static void capture_shm(char *orig_name)
 		prg_exit(EXIT_FAILURE);
 	}
 
-	audio_data = ringbuf_init(buf, SHM_BUF_SIZE);
+	ssize_t f = chunk_bytes * 8 / bits_per_frame;
+
+	audio_data = ringbuf_init(buf, SHM_BUF_SIZE, chunk_bytes);
+
 
 	/* capture */
 	while (1) {
-		ssize_t c = chunk_bytes;
-		ssize_t f = c * 8 / bits_per_frame;
-		if (pcm_read(audiobuf, f) != f) {
+		if (pcm_read(ringbuf_head(audio_data), f) != f) {
 			in_aborting = 1;
 			break;
 		}
@@ -3060,7 +3061,8 @@ static void capture_shm(char *orig_name)
 		if (in_aborting)
 			prg_exit(EXIT_FAILURE);
 
-		ringbuf_memcpy_into(audio_data, audiobuf, c);
+		/*ringbuf_memcpy_into(audio_data, audiobuf, c);*/
+		ringbuf_fill_buf(audio_data, chunk_bytes);
 	}
 }
 

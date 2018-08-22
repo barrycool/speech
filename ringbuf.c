@@ -25,31 +25,36 @@
 #include <assert.h>
 
 ringbuf_t
-ringbuf_init(uint8_t *buf, size_t capacity)
+ringbuf_init(uint8_t *buf, size_t buf_len, size_t align_size)
 {
-    assert(buf && capacity);
+    assert(buf && buf_len);
 
     ringbuf_t rb = (ringbuf_t)buf;
     /* One byte is used for detecting the full condition. */
-    rb->size = capacity - sizeof(struct ringbuf_t);
+    rb->size = (buf_len - sizeof(struct ringbuf)) / align_size;
+    rb->size *= align_size ;
     ringbuf_reset(rb);
 
     return rb;
 }
 
+/*ringbuf_get(uint8_t *buf, size_t buf_len)*/
 ringbuf_t
 ringbuf_get(uint8_t *buf)
 {
     assert(buf);
 
     ringbuf_t rb = (ringbuf_t)buf;
+    /* One byte is used for detecting the full condition. */
+    /*rb->size = (buf_len - sizeof(struct ringbuf)) & (~0x1FFlu);
+    rb->size +=  1;*/
 	ringbuf_reset(rb);
 
 	return rb;
 }
 
 size_t
-ringbuf_buffer_size(const struct ringbuf_t *rb)
+ringbuf_buffer_size(ringbuf_t rb)
 {
     return rb->size;
 }
@@ -61,13 +66,13 @@ ringbuf_reset(ringbuf_t rb)
 }
 
 size_t
-ringbuf_capacity(const struct ringbuf_t *rb)
+ringbuf_capacity(ringbuf_t rb)
 {
     return ringbuf_buffer_size(rb) - 1;
 }
 
 size_t
-ringbuf_bytes_free(const struct ringbuf_t *rb)
+ringbuf_bytes_free(ringbuf_t rb)
 {
     if (rb->head >= rb->tail)
         return ringbuf_capacity(rb) - (rb->head - rb->tail);
@@ -76,56 +81,39 @@ ringbuf_bytes_free(const struct ringbuf_t *rb)
 }
 
 size_t
-ringbuf_bytes_used(const struct ringbuf_t *rb)
+ringbuf_bytes_used(ringbuf_t rb)
 {
     return ringbuf_capacity(rb) - ringbuf_bytes_free(rb);
 }
 
 int
-ringbuf_is_full(const struct ringbuf_t *rb)
+ringbuf_is_full(ringbuf_t rb)
 {
     return ringbuf_bytes_free(rb) == 0;
 }
 
 int
-ringbuf_is_empty(const struct ringbuf_t *rb)
+ringbuf_is_empty(ringbuf_t rb)
 {
     return ringbuf_bytes_free(rb) == ringbuf_capacity(rb);
 }
 
-const void *
-ringbuf_tail(const struct ringbuf_t *rb)
+void *
+ringbuf_tail(ringbuf_t rb)
 {
     return rb->buf + rb->tail;
 }
 
-const void *
-ringbuf_head(const struct ringbuf_t *rb)
+void *
+ringbuf_head(ringbuf_t rb)
 {
     return rb->buf + rb->head;
-}
-
-/*
- * Given a ring buffer rb and a pointer to a location within its
- * contiguous buffer, return the a pointer to the next logical
- * location in the ring buffer.
- */
-static size_t
-ringbuf_nextp(ringbuf_t rb, size_t p)
-{
-    /*
-     * The assert guarantees the expression (++p - rb->buf) is
-     * non-negative; therefore, the modulus operation is safe and
-     * portable.
-     */
-    assert(p < ringbuf_buffer_size(rb));
-    return (++p) % ringbuf_buffer_size(rb);
 }
 
 void *
 ringbuf_memcpy_into(ringbuf_t dst, const void *src, size_t count)
 {
-    const uint8_t *u8src = src;
+    const uint8_t *u8src = (const uint8_t *)src;
     /*const uint8_t *bufend = ringbuf_end(dst);*/
 	const size_t bufend = ringbuf_buffer_size(dst);
     int overflow = count > ringbuf_bytes_free(dst);
@@ -145,8 +133,6 @@ ringbuf_memcpy_into(ringbuf_t dst, const void *src, size_t count)
     }
 
     if (overflow) {
-        dst->tail = ringbuf_nextp(dst, dst->head);
-        assert(ringbuf_is_full(dst));
 		ringbuf_reset(dst);
     }
 
@@ -174,10 +160,10 @@ ringbuf_fill_buf(ringbuf_t dst, size_t count)
     }
 
     if (overflow) {
-        dst->tail = ringbuf_nextp(dst, dst->head);
-        assert(ringbuf_is_full(dst));
-		ringbuf_reset(dst);
+		/*ringbuf_reset(dst);*/
     }
+
+	/*printf("%zu, %zu\n", dst->head, count);*/
 
     return dst->buf + head;
 }
@@ -189,7 +175,7 @@ ringbuf_memcpy_from(void *dst, ringbuf_t src, size_t count)
     if (count > bytes_used)
         return 0;
 
-    uint8_t *u8dst = dst;
+    uint8_t *u8dst = (uint8_t *)dst;
     const size_t bufend = ringbuf_buffer_size(src);
     size_t nwritten = 0;
     while (nwritten != count) {
@@ -217,7 +203,7 @@ ringbuf_copy_data(void *dst, ringbuf_t src, size_t count)
     if (count > bytes_used)
         return 0;
 
-    uint8_t *u8dst = dst;
+    uint8_t *u8dst = (uint8_t *)dst;
     const size_t bufend = ringbuf_buffer_size(src);
     size_t nwritten = 0;
     while (nwritten != count) {
