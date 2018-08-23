@@ -48,6 +48,12 @@ void *
 ringbuf_fill_buf(ringbuf_t dst, size_t count);
 
 void *
+ringbuf_copy_S16_S16(void *dst, ringbuf_t src, size_t count);
+
+void *
+ringbuf_copy_S16_float(void *dst, ringbuf_t src, size_t count);
+
+void *
 ringbuf_copy_data(void *dst, ringbuf_t src, size_t count);
 
 void *

@@ -37,7 +37,7 @@ inline float Int16SampleToFloat(int16_t data) {
 void decode_audio_data(int16_t *data, uint32_t data_len, float *out)
 {
 	for(uint32_t i = 0; i < data_len; i++) {
-		out[i] = Int16SampleToFloat(single_channel_value[i]);
+		out[i] = Int16SampleToFloat(data[i]);
 	}
 }
 

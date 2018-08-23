@@ -13,6 +13,8 @@ tf_cc_binary(
     srcs = [
         "get_top_n.h",
         "get_top_n_impl.h",
+        "ringbuf.h",
+        "ringbuf.cc",
         "label_wav.cc",
     ],
     linkopts = tflite_linkopts() + select({

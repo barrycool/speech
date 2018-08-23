@@ -33,6 +33,7 @@ limitations under the License.
 #include <unistd.h>     // NOLINT(build/include_order)
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <sys/msg.h>
 
 #include "ringbuf.h"
 #include <fcntl.h>
@@ -51,6 +52,15 @@ limitations under the License.
 
 namespace tflite {
 namespace label_wav {
+
+#define MSG_TYPE_NEW_TXT 1
+#define MSG_LEN 32
+
+struct msgbuf {
+    long mtype;
+    char mtext[MSG_LEN];
+};
+
 
 double get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
 
@@ -142,8 +152,8 @@ void RunInference(Settings* s) {
     interpreter->SetNumThreads(s->number_of_threads);
   }
 
-  uint32_t sample_count;
-  uint16_t channel_count;
+  /*uint32_t sample_count;
+  uint16_t channel_count;*/
   uint32_t sample_rate = 16000;
 
   int input = interpreter->inputs()[0];
@@ -189,93 +199,81 @@ void RunInference(Settings* s) {
 
   uint32_t clip_duration_ms = 1000;
   const uint32_t clip_duration_samples = (clip_duration_ms * sample_rate) / 1000;
-  uint32_t clip_stride_ms = 100;
+  uint32_t clip_stride_ms = 200;
   const uint32_t clip_stride_samples = (clip_stride_ms * sample_rate) / 1000;
-  const uint32_t average_window_duration_ms = 500;
-  const uint32_t average_window_duration_sample = (average_window_duration_ms * sample_rate) / 1000;
-  const float* start = raw_data;
-  const float* end = start + 16000 * 8;
-  const float detection_threshold = 0.7;
-  const float *last_start = raw_data;
-  int last_index = -1;
-  uint32_t current_window_duration_sample;
+  const uint32_t average_window_duration_ms = 1000;
+  const uint32_t average_window_duration_samples = (average_window_duration_ms * sample_rate) / 1000;
+  const float detection_threshold = 0.3;
+  uint32_t current_window_duration_samples = 0;
 
-  int shmid = shmget(ftok("/bin/bash", 0), SHM_BUF_SIZE, IPC_CREAT | 0644);
+  int shmid = shmget(ftok("/bin/bash", 0), SHM_BUF_SIZE, IPC_CREAT | 0666);
   if (shmid == -1)
   {
 	  printf("%s\n", strerror(errno));
-	  return 1;
+	  return;
   }
 
-  uint8_t *buf = shmat(shmid, NULL, 0);
+  uint8_t *buf = (uint8_t*)shmat(shmid, NULL, 0);
   if (buf == NULL)
   {
 	  printf("%s\n", strerror(errno));
-	  return 2;
+	  return;
   }
-
   ringbuf_t audio_data =  ringbuf_get(buf);
 
-  int16_t *raw_data = new int16_t[16000];
+  int msgId = msgget(ftok("/bin/ps", 0), IPC_CREAT | 0666);
+  if (msgId == -1) {
+	  perror("msgget");
+	  return;
+  }
+  struct msgbuf msg;
 
   while (1)
   {
-	  if (ringbuf_bytes_used(audio_data) < clip_duration_samples * 2)
+	  if (ringbuf_bytes_used(audio_data) < clip_stride_samples * 2)
 	  {
-		  usleep(50000);
+		  usleep(10000);
 		  continue;
 	  }
 
-	  ringbuf_copy_data(raw_data, audio_data, clip_duration_samples * 2);
-	  ringbuf_skip_buf(raw_data, clip_stride_samples * 2);
+	  memcpy(input_buf, input_buf + clip_stride_samples, (clip_duration_samples - clip_stride_samples) * sizeof(float));
 
-	  decode_audio_data(raw_data, clip_duration_samples, input_buf);		
+	  ringbuf_copy_S16_float(input_buf + clip_duration_samples - clip_stride_samples, audio_data, 
+			  clip_stride_samples * 2);
+
+	  if (current_window_duration_samples) { 
+		  if (current_window_duration_samples < clip_stride_samples) {
+			  current_window_duration_samples = 0;
+		  }
+		  else {
+			  current_window_duration_samples -= clip_stride_samples;
+		  }
+		  continue;
+	  }
 
 	  interpreter->Invoke();
 
-	  const float threshold = 0.001f;
-
-	  std::vector<std::pair<float, int>> top_results;
+	  float max_res;
+	  int max_index;
 
 	  int output = interpreter->outputs()[0];
 	  TfLiteIntArray* output_dims = interpreter->tensor(output)->dims;
 	  // assume output dims to be something like (1, 1, ... ,size)
 	  auto output_size = output_dims->data[output_dims->size - 1];
-	  switch (interpreter->tensor(output)->type) {
-		  case kTfLiteFloat32:
-			  get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
-					  s->number_of_results, threshold, &top_results, true);
-			  break;
-		  case kTfLiteUInt8:
-			  get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
-					  output_size, s->number_of_results, threshold,
-					  &top_results, false);
-			  break;
-		  default:
-			  LOG(FATAL) << "cannot handle output type "
-				  << interpreter->tensor(input)->type << " yet";
-			  exit(-1);
-	  }
 
-	  current_window_duration_sample = start - last_start;
+	  get_max_index(interpreter->typed_output_tensor<float>(0), 
+			  output_size, max_res, max_index);
 
-	  if (top_results[0].first > detection_threshold) {
-		  /*if (last_index != top_results[0].second || 
-			(current_window_duration_sample >= average_window_duration_sample ||
-			current_window_duration_sample == 0)) */
-		  {
+	  if (max_res > detection_threshold) {
+		  current_window_duration_samples = average_window_duration_samples;
 
-			  /*LOG(INFO) << current_window_duration_sample << "\n";
-				start += average_window_duration_sample - clip_stride_samples;
-				last_start = start;
-				last_index = top_results[0].second;*/
-
-			  for (const auto& result : top_results) {
-				  const float confidence = result.first;
-				  const int index = result.second;
-				  LOG(INFO) << confidence << ": " << index << " " << labels[index] << "\n";
-			  }
+		  msg.mtype = MSG_TYPE_NEW_TXT;
+		  snprintf(msg.mtext, MSG_LEN, "%s", labels[max_index]);
+		  if (msgsnd(msgId, (void *) &msg, MSG_LEN, IPC_NOWAIT) == -1) {
+			  perror("msgsnd error");
 		  }
+
+		  LOG(INFO) << max_res<< ": " << max_index<< " " << labels[max_index] << "\n";
 	  }
   }
 }

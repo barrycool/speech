@@ -7,12 +7,13 @@
 #include <unistd.h>
 #include "ringbuf.h"
 #include <time.h>
+#include <fcntl.h>
 
-#define SHM_BUF_SIZE 48 //(48 * 1024)
+#define SHM_BUF_SIZE (96 * 1024)
 
 int main()
 {
-	int shmid = shmget(ftok("/record2recognize", 0), SHM_BUF_SIZE, IPC_CREAT | 0664);
+	int shmid = shmget(ftok("/bin/bash", 0), SHM_BUF_SIZE, IPC_CREAT | 0666);
 	if (shmid == -1)
 	{
 		printf("%s\n", strerror(errno));
@@ -26,18 +27,24 @@ int main()
 		return 2;
 	}
 
-	ringbuf_t audio_data = ringbuf_init(buf, SHM_BUF_SIZE);
+	ringbuf_t audio_data = ringbuf_init(buf, SHM_BUF_SIZE, 4000);
 
-	char test_buf[1024];
+	char test_buf[4000];
 	size_t test_buf_len;
+
+	int fd  = open("test.txt", O_RDONLY);
 
 	while(1)
 	{
-		test_buf_len = sprintf(test_buf, "%ld\n", time(NULL));
-		printf("%s\n", test_buf);
-		ringbuf_memcpy_into(audio_data, test_buf, test_buf_len);
-		sleep(1);
+		test_buf_len = read(fd, ringbuf_head(audio_data), 4000);
+		ringbuf_fill_buf(audio_data, test_buf_len);
+		if (test_buf_len < 4000)
+			break;
+		usleep(10000);
 	}
+
+	printf("over\n");
+	close(fd);
 
 	if (shmdt(buf) == -1)
     {

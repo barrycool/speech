@@ -509,7 +509,7 @@ int main(int argc, char *argv[])
 #endif
 		{0, 0, 0, 0}
 	};
-	char *pcm_name = "default";
+	char *pcm_name = "plughw:0,0";
 	int tmp, err, c;
 	int do_device_list = 0, do_pcm_list = 0;
 	snd_pcm_info_t *info;
@@ -3032,7 +3032,7 @@ static void capture_shm(char *orig_name)
 	ringbuf_t audio_data;
 
 	/* open a file to write */
-	shmid = shmget(ftok("/bin/bash", 0), SHM_BUF_SIZE, IPC_CREAT | 0644);
+	shmid = shmget(ftok("/bin/bash", 0), SHM_BUF_SIZE, IPC_CREAT | 0666);
 	if (shmid == -1)
 	{
 		printf("shmget %s\n", strerror(errno));

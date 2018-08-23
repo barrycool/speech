@@ -62,6 +62,19 @@ void get_top_n(T* prediction, int prediction_size, size_t num_results,
   std::reverse(top_results->begin(), top_results->end());
 }
 
+void get_max_index(float *res, int res_size, float &max_res, int &max_index)
+{
+	max_res = 0.0f;
+	max_index = 0;
+
+	for (int i = 0; i < res_size; ++i) {
+		if (res[i] > max_res) {
+			max_res = res[i];
+			max_index = i;
+		}
+	}
+}
+
 }  // namespace label_image
 }  // namespace tflite
 

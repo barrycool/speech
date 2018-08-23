@@ -21,6 +21,8 @@ limitations under the License.
 namespace tflite {
 namespace label_wav {
 
+void get_max_index(float *res, int res_size, float &max_res, int &max_index);
+
 template <class T>
 void get_top_n(T* prediction, int prediction_size, size_t num_results,
                float threshold, std::vector<std::pair<float, int>>* top_results,

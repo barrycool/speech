@@ -160,7 +160,7 @@ ringbuf_fill_buf(ringbuf_t dst, size_t count)
     }
 
     if (overflow) {
-		/*ringbuf_reset(dst);*/
+		ringbuf_reset(dst);
     }
 
 	/*printf("%zu, %zu\n", dst->head, count);*/
@@ -182,6 +182,70 @@ ringbuf_memcpy_from(void *dst, ringbuf_t src, size_t count)
         assert(bufend > src->tail);
         size_t n = MIN(bufend - src->tail, count - nwritten);
         memcpy(u8dst + nwritten, src->buf + src->tail, n);
+        src->tail += n;
+        nwritten += n;
+
+        /* wrap ? */
+        if (src->tail == bufend)
+            src->tail = 0;
+    }
+
+    assert(count + ringbuf_bytes_used(src) == bytes_used);
+    return src->buf + src->tail;
+}
+
+void *
+ringbuf_copy_S16_float(void *dst, ringbuf_t src, size_t count)
+{
+	size_t bytes_used = ringbuf_bytes_used(src);
+	if (count > bytes_used)
+		return 0;
+
+	const float base = 1.0f / (1 << 15);
+    float *floatdst = (float *)dst;
+    const size_t bufend = ringbuf_buffer_size(src);
+    size_t nwritten = 0;
+	size_t dst_len = 0;
+	
+
+    while (nwritten != count) {
+        assert(bufend > src->tail);
+        size_t n = MIN(bufend - src->tail, count - nwritten);
+		int16_t * S16src = (int16_t *)(src->buf + src->tail);
+		for (size_t i = 0; i < n / 2; i++) {
+			floatdst[dst_len++] = S16src[i] * base;
+		}
+        src->tail += n;
+        nwritten += n;
+
+        /* wrap ? */
+        if (src->tail == bufend)
+            src->tail = 0;
+    }
+
+    assert(count + ringbuf_bytes_used(src) == bytes_used);
+    return src->buf + src->tail;
+}
+
+void *
+ringbuf_copy_S16_S16(void *dst, ringbuf_t src, size_t count)
+{
+    size_t bytes_used = ringbuf_bytes_used(src);
+    if (count > bytes_used)
+        return 0;
+
+    int16_t *floatdst = (int16_t *)dst;
+    const size_t bufend = ringbuf_buffer_size(src);
+    size_t nwritten = 0;
+	size_t dst_len = 0;
+	
+    while (nwritten != count) {
+        assert(bufend > src->tail);
+        size_t n = MIN(bufend - src->tail, count - nwritten);
+		int16_t * S16src = (int16_t *)(src->buf + src->tail);
+		for (size_t i = 0; i < n / 2; i++) {
+			floatdst[dst_len++] = S16src[i];
+		}
         src->tail += n;
         nwritten += n;
 
