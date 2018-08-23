@@ -264,11 +264,11 @@ void RunInference(Settings* s) {
 	  get_max_index(interpreter->typed_output_tensor<float>(0), 
 			  output_size, max_res, max_index);
 
-	  if (max_res > detection_threshold) {
+	  if (max_index != 0 && max_res > detection_threshold) {
 		  current_window_duration_samples = average_window_duration_samples;
 
 		  msg.mtype = MSG_TYPE_NEW_TXT;
-		  snprintf(msg.mtext, MSG_LEN, "%s", labels[max_index]);
+		  snprintf(msg.mtext, MSG_LEN, "%s", labels[max_index].c_str());
 		  if (msgsnd(msgId, (void *) &msg, MSG_LEN, IPC_NOWAIT) == -1) {
 			  perror("msgsnd error");
 		  }

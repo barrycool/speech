@@ -22,12 +22,9 @@ int main()
 
 	struct msgbuf msg;
 
-	if (msgrcv(msgId, (void *) &msg, MSG_LEN, MSG_TYPE_NEW_TXT, 0 /*IPC_NOWAIT*/) == -1) {
-		perror("msgsnd error");
-		return 3;
+	while (msgrcv(msgId, (void *) &msg, MSG_LEN, MSG_TYPE_NEW_TXT, 0 /*IPC_NOWAIT*/) != -1) {
+		printf("%s\n", msg.mtext);
 	}
-
-	printf("%s\n", msg.mtext);
 
 	return 0;
 }
