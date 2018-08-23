@@ -31,3 +31,7 @@
 *.out
 *.app
 *.swp
+arecord
+msgsnd
+msgrcv
+
