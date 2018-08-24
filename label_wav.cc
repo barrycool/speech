@@ -201,7 +201,7 @@ void RunInference(Settings* s) {
   const uint32_t clip_duration_samples = (clip_duration_ms * sample_rate) / 1000;
   uint32_t clip_stride_ms = 200;
   const uint32_t clip_stride_samples = (clip_stride_ms * sample_rate) / 1000;
-  const uint32_t average_window_duration_ms = 1000;
+  const uint32_t average_window_duration_ms = 600;
   const uint32_t average_window_duration_samples = (average_window_duration_ms * sample_rate) / 1000;
   const float detection_threshold = 0.3;
   uint32_t current_window_duration_samples = 0;
