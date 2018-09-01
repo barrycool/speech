@@ -35,8 +35,9 @@ limitations under the License.
 #include <sys/shm.h>
 #include <sys/msg.h>
 
-#include "ringbuf.h"
 #include <fcntl.h>
+#include "ringbuf.h"
+#include "recognize_commands.h"
 
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
@@ -60,9 +61,6 @@ struct msgbuf {
     long mtype;
     char mtext[MSG_LEN];
 };
-
-
-double get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
 
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
@@ -201,10 +199,11 @@ void RunInference(Settings* s) {
   const uint32_t clip_duration_samples = (clip_duration_ms * sample_rate) / 1000;
   uint32_t clip_stride_ms = 200;
   const uint32_t clip_stride_samples = (clip_stride_ms * sample_rate) / 1000;
-  const uint32_t average_window_duration_ms = 600;
-  const uint32_t average_window_duration_samples = (average_window_duration_ms * sample_rate) / 1000;
+  const uint32_t average_window_duration_ms = 500;
+  /*const uint32_t average_window_duration_samples = (average_window_duration_ms * sample_rate) / 1000;*/
+  const uint32_t suppression_ms = 1500;
   const float detection_threshold = 0.3;
-  uint32_t current_window_duration_samples = 0;
+  uint32_t current_time_ms = 0;
 
   int shmid = shmget(ftok("/bin/bash", 0), SHM_BUF_SIZE, IPC_CREAT | 0666);
   if (shmid == -1)
@@ -227,6 +226,12 @@ void RunInference(Settings* s) {
 	  return;
   }
   struct msgbuf msg;
+  tflite::RecognizeCommands recognize_commands(
+		  labels, average_window_duration_ms, detection_threshold, suppression_ms);
+  string found_command;
+  float score;
+  bool is_new_command;
+
 
   while (1)
   {
@@ -237,23 +242,34 @@ void RunInference(Settings* s) {
 	  }
 
 	  memcpy(input_buf, input_buf + clip_stride_samples, (clip_duration_samples - clip_stride_samples) * sizeof(float));
-
 	  ringbuf_copy_S16_float(input_buf + clip_duration_samples - clip_stride_samples, audio_data, 
 			  clip_stride_samples * 2);
 
-	  if (current_window_duration_samples) { 
-		  if (current_window_duration_samples < clip_stride_samples) {
-			  current_window_duration_samples = 0;
-		  }
-		  else {
-			  current_window_duration_samples -= clip_stride_samples;
-		  }
-		  continue;
-	  }
-
 	  interpreter->Invoke();
 
-	  float max_res;
+	  int output = interpreter->outputs()[0];
+	  TfLiteIntArray* output_dims = interpreter->tensor(output)->dims;
+	  // assume output dims to be something like (1, 1, ... ,size)
+	  auto output_size = output_dims->data[output_dims->size - 1];
+	  float *output_data = interpreter->typed_output_tensor<float>(0);
+
+	  recognize_commands.ProcessLatestResults(
+          vector<float>(output_data, output_data + output_size), 
+		  current_time_ms, &found_command, &score, &is_new_command);
+
+	  if (is_new_command) {
+		  msg.mtype = MSG_TYPE_NEW_TXT;
+		  snprintf(msg.mtext, MSG_LEN, "%s", found_command.c_str());
+		  if (msgsnd(msgId, (void *) &msg, MSG_LEN, IPC_NOWAIT) == -1) {
+			  perror("msgsnd error");
+		  }
+
+		  LOG(INFO) << score<< ": " << found_command<< "\n";
+	  }
+
+	  current_time_ms += clip_stride_ms;
+
+	  /*float max_res;
 	  int max_index;
 
 	  int output = interpreter->outputs()[0];
@@ -265,8 +281,6 @@ void RunInference(Settings* s) {
 			  output_size, max_res, max_index);
 
 	  if (max_index != 0 && max_res > detection_threshold) {
-		  current_window_duration_samples = average_window_duration_samples;
-
 		  msg.mtype = MSG_TYPE_NEW_TXT;
 		  snprintf(msg.mtext, MSG_LEN, "%s", labels[max_index].c_str());
 		  if (msgsnd(msgId, (void *) &msg, MSG_LEN, IPC_NOWAIT) == -1) {
@@ -274,7 +288,7 @@ void RunInference(Settings* s) {
 		  }
 
 		  LOG(INFO) << max_res<< ": " << max_index<< " " << labels[max_index] << "\n";
-	  }
+	  }*/
   }
 }
 

@@ -15,6 +15,8 @@ tf_cc_binary(
         "get_top_n_impl.h",
         "ringbuf.h",
         "ringbuf.cc",
+        "recognize_commands.cc",
+        "recognize_commands.h",
         "label_wav.cc",
     ],
     linkopts = tflite_linkopts() + select({
