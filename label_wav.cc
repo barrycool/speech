@@ -241,7 +241,7 @@ void RunInference(Settings* s) {
 		  continue;
 	  }
 
-	  memcpy(input_buf, input_buf + clip_stride_samples, (clip_duration_samples - clip_stride_samples) * sizeof(float));
+	  memmove(input_buf, input_buf + clip_stride_samples, (clip_duration_samples - clip_stride_samples) * sizeof(float));
 	  ringbuf_copy_S16_float(input_buf + clip_duration_samples - clip_stride_samples, audio_data, 
 			  clip_stride_samples * 2);
 
